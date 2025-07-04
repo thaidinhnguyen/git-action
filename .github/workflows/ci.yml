@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  lint-and-test:
+  CI:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
