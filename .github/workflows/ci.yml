@@ -1,13 +1,22 @@
 name: Weekly Auto Merge
 
 on:
-  workflow_dispatch:
-  # schedule:
-  #   # 17:00 every Thursday (UTC+7 = 10:00 UTC)
-  #   - cron: "*/5 * * * *"
-  #   # 17:30 every Thursday (UTC+7 = 10:30 UTC)
-  #   - cron: "*/5 * * * *"
+  schedule:
+    # 17:00 every Thursday (UTC+7 = 10:00 UTC)
+    - cron: "0 10 * * 4"
+    # 17:30 every Thursday (UTC+7 = 10:30 UTC)
+    - cron: "30 10 * * 4"
 
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Select test mode'
+        required: true
+        default: 'create-pr'
+        type: choice
+        options:
+          - create-pr
+          - auto-merge
 
 env:
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -15,7 +24,9 @@ env:
 
 jobs:
   create-pr:
-    # if: github.event.schedule == '0 10 * * 4'
+    if: github.event.schedule == '0 10 * * 4' || 
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.test_mode == 'create-pr') ||
+        github.event_name == 'pull_request'  # Allow manual triggering for testing
     runs-on: ubuntu-latest
     outputs:
       pr-number: ${{ steps.create-pr.outputs.pr-number }}
@@ -194,7 +205,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   auto-merge:
-    # if: github.event.schedule == '30 10 * * 4'
+    if: github.event.schedule == '30 10 * * 4' # 17:30 every Thursday (UTC+7 = 10:30 UTC)
     runs-on: ubuntu-latest
 
     steps:
