@@ -1,11 +1,13 @@
 name: Weekly Auto Merge
 
-# on:
-#   schedule:
-#     # 17:00 every Thursday (UTC+7 = 10:00 UTC)
-#     - cron: "*/5 * * * *"
-#     # 17:30 every Thursday (UTC+7 = 10:30 UTC)
-#     - cron: "*/5 * * * *"
+on:
+  workflow_dispatch:
+  # schedule:
+  #   # 17:00 every Thursday (UTC+7 = 10:00 UTC)
+  #   - cron: "*/5 * * * *"
+  #   # 17:30 every Thursday (UTC+7 = 10:30 UTC)
+  #   - cron: "*/5 * * * *"
+
 
 env:
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
