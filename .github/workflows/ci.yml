@@ -1,28 +1,316 @@
-# .github/workflows/ci.yml
-name: CI
+name: Weekly Auto Merge
 
 on:
-  pull_request:
-    branches:
-      - main
+  schedule:
+    # 17:00 every Thursday (UTC+7 = 10:00 UTC)
+    - cron: "1 * * * 4"
+    # 17:30 every Thursday (UTC+7 = 10:30 UTC)
+    # - cron: "30 10 * * 4"
+
+env:
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  PR_LABEL: "auto-merge-develop-check2"
 
 jobs:
-  lint-and-test:
+  create-pr:
+    # if: github.event.schedule == '0 10 * * 4'
     runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.create-pr.outputs.pr-number }}
+      has-conflicts: ${{ steps.check-conflicts.outputs.has-conflicts }}
+      pr-url: ${{ steps.create-pr.outputs.pr-url }}
+      has-changes: ${{ steps.check-changes.outputs.has-changes }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm install
+      - name: Check for changes between develop and check2
+        id: check-changes
+        run: |
+          git fetch origin develop
+          git fetch origin check2
+          
+          # Check if there are commits from develop that are not in check2
+          COMMITS=$(git rev-list origin/check2..origin/develop --count)
+          
+          if [ "$COMMITS" -eq 0 ]; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected between develop and check2"
+          else
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "Found $COMMITS commits to merge from develop to check2"
+          fi
 
-      - name: Run ESLint
-        run: npm run lint
+      # - name: Send Slack notification - No Changes
+      #   if: steps.check-changes.outputs.has-changes == 'false'
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: custom
+      #     custom_payload: |
+      #       {
+      #         text: "<!channel>",
+      #         attachments: [{
+      #           color: 'good',
+      #           title: 'Weekly Auto Merge - No Changes Detected',
+      #           text: `✅ No changes found between develop and check2 branches\n🔗 https://github.com/${{ github.repository }}\n\n🎉 Both branches are already in sync - no action needed`,
+      #           footer: 'GitHub Actions',
+      #           ts: Math.floor(Date.now() / 1000)
+      #         }]
+      #       }
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-      - name: Run Jest tests
-        run: npm test
+      - name: Create PR from develop to check2
+        id: create-pr
+        if: steps.check-changes.outputs.has-changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const { data: pr } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Weekly merge - ${new Date().toLocaleDateString('en-US')}`,
+                head: 'develop',
+                base: 'check2',
+                body: 'Automatically created weekly PR to merge develop into check2'
+              });
+              
+              // Add label to PR
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: [process.env.PR_LABEL]
+              });
+              
+              core.setOutput('pr-number', pr.number);
+              core.setOutput('pr-url', pr.html_url);
+              return pr.number;
+            } catch (error) {
+              core.setFailed(`Failed to create PR: ${error.message}`);
+            }
+
+      # - name: Check for conflicts
+      #   id: check-conflicts
+      #   if: steps.create-pr.outputs.pr-number
+      #   uses: actions/github-script@v7
+      #   with:
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     script: |
+      #       const prNumber = ${{ steps.create-pr.outputs.pr-number }};
+
+      #       const { data: pr } = await github.rest.pulls.get({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         pull_number: prNumber
+      #       });
+
+      #       const hasConflicts = !pr.mergeable || pr.mergeable_state === 'dirty';
+      #       core.setOutput('has-conflicts', hasConflicts);
+
+      #       return hasConflicts;
+
+      # - name: Send Slack notification - PR Created Successfully
+      #   if: steps.create-pr.outputs.pr-number && steps.check-conflicts.outputs.has-conflicts != 'true'
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: custom
+      #     custom_payload: |
+      #       {
+      #         text: "<!channel>",
+      #         attachments: [{
+      #           color: 'good',
+      #           title: 'Weekly Auto Merge - PR Created (develop → check2)',
+      #           text: `✅ PR #${{ steps.create-pr.outputs.pr-number }} created successfully with label "${{ env.PR_LABEL }}"!\n🔗 ${{ steps.create-pr.outputs.pr-url }}\n\n🔔 Will auto-merge at 17:30 Vietnam time`,
+      #           footer: 'GitHub Actions',
+      #           ts: Math.floor(Date.now() / 1000),
+      #           actions: [
+      #             {
+      #               type: 'button',
+      #               text: '🔗 View PR',
+      #               url: '${{ steps.create-pr.outputs.pr-url }}'
+      #             },
+      #             {
+      #               type: 'button',
+      #               text: '✅ Merge Now',
+      #               url: '${{ steps.create-pr.outputs.pr-url }}/files'
+      #             }
+      #           ]
+      #         }]
+      #       }
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # - name: Send Slack notification - PR has Conflicts
+      #   if: steps.create-pr.outputs.pr-number && steps.check-conflicts.outputs.has-conflicts == 'true'
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: custom
+      #     custom_payload: |
+      #       {
+      #         text: "<!channel>",
+      #         attachments: [{
+      #           color: 'warning',
+      #           title: 'Weekly Auto Merge - PR Created with Conflicts (develop → check2)',
+      #           text: `⚠️ PR #${{ steps.create-pr.outputs.pr-number }} created with label "${{ env.PR_LABEL }}" but has conflicts!\n🔗 ${{ steps.create-pr.outputs.pr-url }}\n\n📋 Please resolve conflicts manually`,
+      #           footer: 'GitHub Actions',
+      #           ts: Math.floor(Date.now() / 1000),
+      #           actions: [
+      #             {
+      #               type: 'button',
+      #               text: '🔗 Resolve Conflicts',
+      #               url: '${{ steps.create-pr.outputs.pr-url }}'
+      #             }
+      #           ]
+      #         }]
+      #       }
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # - name: Send Slack notification - Failed to Create PR
+      #   if: failure() && steps.check-changes.outputs.has-changes == 'true'
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: custom
+      #     custom_payload: |
+      #       {
+      #         text: "<!channel>",
+      #         attachments: [{
+      #           color: 'danger',
+      #           title: 'Weekly Auto Merge - Failed (develop → check2)',
+      #           text: '❌ Failed to create automatic PR from develop to check2',
+      #           footer: 'GitHub Actions',
+      #           ts: Math.floor(Date.now() / 1000)
+      #         }]
+      #       }
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # auto-merge:
+  #   if: github.event.schedule == '30 10 * * 4'
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+
+  #     - name: Find and merge PR by label
+  #       uses: actions/github-script@v7
+  #       with:
+  #         github-token: ${{ secrets.GITHUB_TOKEN }}
+  #         script: |
+  #           // Find PR with auto-merge-develop-check2 label
+  #           const { data: prs } = await github.rest.pulls.list({
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             state: 'open',
+  #             head: 'develop',
+  #             base: 'check2'
+  #           });
+
+  #           // Filter PR with required label
+  #           let targetPR = null;
+  #           for (const pr of prs) {
+  #             const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+  #               owner: context.repo.owner,
+  #               repo: context.repo.repo,
+  #               issue_number: pr.number
+  #             });
+              
+  #             const hasTargetLabel = labels.some(label => label.name === process.env.PR_LABEL);
+  #             if (hasTargetLabel) {
+  #               targetPR = pr;
+  #               break;
+  #             }
+  #           }
+
+  #           if (!targetPR) {
+  #             // No PR found to merge
+  #             const payload = {
+  #               text: "<!channel>",
+  #               attachments: [{
+  #                 color: 'good',
+  #                 title: 'Weekly Auto Merge - No Action Needed',
+  #                 text: `✅ No open PR found with label "${process.env.PR_LABEL}"\n🎉 Either already merged, no changes detected, or no PR was created today`,
+  #                 footer: 'GitHub Actions',
+  #                 ts: Math.floor(Date.now() / 1000)
+  #               }]
+  #             };
+              
+  #             await fetch(process.env.SLACK_WEBHOOK_URL, {
+  #               method: 'POST',
+  #               headers: { 'Content-Type': 'application/json' },
+  #               body: JSON.stringify(payload)
+  #             });
+  #             return;
+  #           }
+
+  #           // Check PR status
+  #           const { data: pr } = await github.rest.pulls.get({
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             pull_number: targetPR.number
+  #           });
+
+  #           if (!pr.mergeable) {
+  #             // Notify Slack about conflicts
+  #             const payload = {
+  #               text: "<!channel>",
+  #               attachments: [{
+  #                 color: 'danger',
+  #                 title: 'Weekly Auto Merge - Failed',
+  #                 text: `❌ Cannot merge PR #${pr.number} (label: ${process.env.PR_LABEL}) due to conflicts!\n🔗 ${pr.html_url}\n\n👥 Manual intervention required to resolve conflicts`,
+  #                 footer: 'GitHub Actions',
+  #                 ts: Math.floor(Date.now() / 1000)
+  #               }]
+  #             };
+              
+  #             await fetch(process.env.SLACK_WEBHOOK_URL, {
+  #               method: 'POST',
+  #               headers: { 'Content-Type': 'application/json' },
+  #               body: JSON.stringify(payload)
+  #             });
+              
+  #             core.setFailed('PR has conflicts, cannot auto-merge');
+  #             return;
+  #           }
+
+  #           // Merge PR
+  #           try {
+  #             await github.rest.pulls.merge({
+  #               owner: context.repo.owner,
+  #               repo: context.repo.repo,
+  #               pull_number: pr.number,
+  #               commit_title: `Weekly merge - ${new Date().toLocaleDateString('en-US')}`,
+  #               merge_method: 'merge'
+  #             });
+              
+  #             // Notify Slack about successful merge
+  #             const payload = {
+  #               text: "<!channel>",
+  #               attachments: [{
+  #                 color: 'good',
+  #                 title: 'Weekly Auto Merge - Success',
+  #                 text: `✅ PR #${pr.number} (label: ${process.env.PR_LABEL}) merged successfully!\n🔗 ${pr.html_url}\n\n🎉 Develop has been merged into check2`,
+  #                 footer: 'GitHub Actions',
+  #                 ts: Math.floor(Date.now() / 1000)
+  #               }]
+  #             };
+              
+  #             await fetch(process.env.SLACK_WEBHOOK_URL, {
+  #               method: 'POST',
+  #               headers: { 'Content-Type': 'application/json' },
+  #               body: JSON.stringify(payload)
+  #             });
+              
+  #           } catch (error) {
+  #             core.setFailed(`Error merging PR: ${error.message}`);
+  #           }
