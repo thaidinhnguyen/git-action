@@ -88,10 +88,10 @@ jobs:
         status: custom
         custom_payload: |
           {
-            "text": "@channel 🚀 Auto Merge Success",
+            "text": "<!channel> 🚀 Auto Merge Success",
             "attachments": [
               {
-                "color": "good",
+                "color": "#36a64f",
                 "fields": [
                   {
                     "title": "Repository",
@@ -137,7 +137,7 @@ jobs:
         status: custom
         custom_payload: |
           {
-            "text": "@channel ℹ️ Auto Merge Check - No Changes",
+            "text": "<!channel> ℹ️ Auto Merge Check - No Changes",
             "attachments": [
               {
                 "color": "#36a64f",
@@ -186,10 +186,10 @@ jobs:
         status: custom
         custom_payload: |
           {
-            "text": "@channel ⚠️ Auto Merge Failed",
+            "text": "<!channel> ⚠️ Auto Merge Failed",
             "attachments": [
               {
-                "color": "danger",
+                "color": "#dc3545",
                 "fields": [
                   {
                     "title": "Repository",
