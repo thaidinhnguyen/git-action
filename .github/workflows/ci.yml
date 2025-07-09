@@ -9,6 +9,12 @@ on:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    outputs:
+      merge_success: ${{ steps.merge.outputs.merge_success }}
+      has_changes: ${{ steps.merge.outputs.has_changes }}
+      merge_message: ${{ steps.merge.outputs.merge_message }}
+      latest_commit: ${{ steps.commit_info.outputs.latest_commit }}
+      new_commits: ${{ steps.commit_info.outputs.new_commits }}
     
     steps:
     - name: Checkout repository
@@ -75,14 +81,20 @@ jobs:
             echo "new_commits=No new commits to merge" >> $GITHUB_OUTPUT
           fi
         fi
+
+  notify-merge-result:
+    needs: auto-merge
+    runs-on: ubuntu-latest
+    if: always()
     
+    steps:
     - name: Get current time
       id: current_time
       run: |
         echo "time=$(TZ='Asia/Ho_Chi_Minh' date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
     
     - name: Send Slack notification on success with changes
-      if: steps.merge.outputs.merge_success == 'true' && steps.merge.outputs.has_changes == 'true'
+      if: needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'true'
       uses: 8398a7/action-slack@v3
       with:
         status: custom
@@ -91,7 +103,7 @@ jobs:
             "text": "<!channel> 🚀 Auto Merge Success",
             "attachments": [
               {
-                "color": "#36a64f",
+                "color": "good",
                 "fields": [
                   {
                     "title": "Repository",
@@ -105,19 +117,14 @@ jobs:
                   },
                   {
                     "title": "Status",
-                    "value": "${{ steps.merge.outputs.merge_message }}",
-                    "short": false
-                  },
-                  {
-                    "title": "Latest Commit",
-                    "value": "${{ steps.commit_info.outputs.latest_commit }}",
+                    "value": "${{ needs.auto-merge.outputs.merge_message }}",
                     "short": false
                   },
                   {
                     "title": "Time",
                     "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
                     "short": true
-                  },
+                  }
                 ]
               }
             ]
@@ -126,7 +133,7 @@ jobs:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     
     - name: Send Slack notification on success without changes
-      if: steps.merge.outputs.merge_success == 'true' && steps.merge.outputs.has_changes == 'false'
+      if: needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'false'
       uses: 8398a7/action-slack@v3
       with:
         status: custom
@@ -149,19 +156,14 @@ jobs:
                   },
                   {
                     "title": "Status",
-                    "value": "${{ steps.merge.outputs.merge_message }}",
-                    "short": false
-                  },
-                  {
-                    "title": "Latest Commit",
-                    "value": "${{ steps.commit_info.outputs.latest_commit }}",
+                    "value": "${{ needs.auto-merge.outputs.merge_message }}",
                     "short": false
                   },
                   {
                     "title": "Time",
                     "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
                     "short": true
-                  },
+                  }
                 ]
               }
             ]
@@ -170,7 +172,7 @@ jobs:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     
     - name: Send Slack notification on failure
-      if: steps.merge.outputs.merge_success == 'false'
+      if: needs.auto-merge.outputs.merge_success == 'false'
       uses: 8398a7/action-slack@v3
       with:
         status: custom
@@ -179,7 +181,7 @@ jobs:
             "text": "<!channel> ⚠️ Auto Merge Failed",
             "attachments": [
               {
-                "color": "#dc3545",
+                "color": "danger",
                 "fields": [
                   {
                     "title": "Repository",
@@ -193,7 +195,7 @@ jobs:
                   },
                   {
                     "title": "Error",
-                    "value": "${{ steps.merge.outputs.merge_message }}",
+                    "value": "${{ needs.auto-merge.outputs.merge_message }}",
                     "short": false
                   },
                   {
@@ -212,3 +214,127 @@ jobs:
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # deploy-to-server:
+  #   needs: [auto-merge, notify-merge-result]
+  #   runs-on: ubuntu-latest
+  #   if: needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'true'
+    
+  #   steps:
+  #   - name: Deploy to server
+  #     uses: appleboy/ssh-action@v1.0.3
+  #     with:
+  #       host: ${{ secrets.SERVER_HOST }}
+  #       username: ${{ secrets.SERVER_USERNAME }}
+  #       key: ${{ secrets.SERVER_SSH_KEY }}
+  #       port: ${{ secrets.SERVER_PORT }}
+  #       script: |
+  #         cd ${{ secrets.SERVER_PROJECT_PATH }}
+  #         git fetch origin
+  #         git checkout check2
+  #         git pull origin check2
+  #         echo "Deployment completed at $(date)"
+
+  # notify-deployment-result:
+  #   needs: [auto-merge, deploy-to-server]
+  #   runs-on: ubuntu-latest
+  #   if: always() && needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'true'
+    
+  #   steps:
+  #   - name: Get current time
+  #     id: current_time
+  #     run: |
+  #       echo "time=$(TZ='Asia/Ho_Chi_Minh' date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+    
+  #   - name: Send deployment success notification
+  #     if: needs.deploy-to-server.result == 'success'
+  #     uses: 8398a7/action-slack@v3
+  #     with:
+  #       status: custom
+  #       custom_payload: |
+  #         {
+  #           "text": "<!channel> 🚀 Deployment Success",
+  #           "attachments": [
+  #             {
+  #               "color": "good",
+  #               "fields": [
+  #                 {
+  #                   "title": "Repository",
+  #                   "value": "${{ github.repository }}",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Branch",
+  #                   "value": "check2",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Status",
+  #                   "value": "✅ Successfully deployed check2 branch to server",
+  #                   "short": false
+  #                 },
+  #                 {
+  #                   "title": "Server",
+  #                   "value": "${{ secrets.SERVER_HOST }}",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Time",
+  #                   "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
+  #                   "short": true
+  #                 }
+  #               ]
+  #             }
+  #           ]
+  #         }
+  #     env:
+  #       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+  #   - name: Send deployment failure notification
+  #     if: needs.deploy-to-server.result == 'failure'
+  #     uses: 8398a7/action-slack@v3
+  #     with:
+  #       status: custom
+  #       custom_payload: |
+  #         {
+  #           "text": "<!channel> ⚠️ Deployment Failed",
+  #           "attachments": [
+  #             {
+  #               "color": "danger",
+  #               "fields": [
+  #                 {
+  #                   "title": "Repository",
+  #                   "value": "${{ github.repository }}",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Branch",
+  #                   "value": "check2",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Status",
+  #                   "value": "❌ Failed to deploy check2 branch to server",
+  #                   "short": false
+  #                 },
+  #                 {
+  #                   "title": "Server",
+  #                   "value": "${{ secrets.SERVER_HOST }}",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Time",
+  #                   "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
+  #                   "short": true
+  #                 },
+  #                 {
+  #                   "title": "Action Required",
+  #                   "value": "Check server connection and deployment logs",
+  #                   "short": false
+  #                 }
+  #               ]
+  #             }
+  #           ]
+  #         }
+  #     env:
+  #       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
