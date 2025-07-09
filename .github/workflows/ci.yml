@@ -119,8 +119,8 @@ jobs:
                     "short": true
                   },
                   {
-                    "title": "New Commits",
-                    "value": "${{ steps.commit_info.outputs.new_commits }}",
+                    "title": "Changes",
+                    "value": "change",
                     "short": false
                   }
                 ]
