@@ -120,7 +120,7 @@ jobs:
                   },
                   {
                     "title": "New Commits",
-                    "value": "```${{ steps.commit_info.outputs.new_commits }}```",
+                    "value": "${{ steps.commit_info.outputs.new_commits }}",
                     "short": false
                   }
                 ]
