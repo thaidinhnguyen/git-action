@@ -2,162 +2,223 @@ name: Auto Merge Develop to Check2
 
 on:
   schedule:
+    # Chạy lúc 17:00 giờ Việt Nam (UTC+7) = 10:00 UTC
     - cron: '0 10 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Cho phép chạy thủ công
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: Fetch all branches
-        run: |
-          git fetch --all
-          git branch -r
-
-      - name: Switch to check2 branch
-        run: |
-          git checkout check2
-          git pull origin check2
-
-      - name: Check for changes and merge
-        id: merge
-        run: |
-          echo "Starting merge from develop to check2..."
-
-          if git diff --quiet check2 origin/develop; then
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Configure Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+    
+    - name: Fetch all branches
+      run: |
+        git fetch --all
+        git branch -r
+    
+    - name: Switch to check2 branch
+      run: |
+        git checkout check2
+        git pull origin check2
+    
+    - name: Check for changes and merge
+      id: merge
+      run: |
+        echo "Starting merge from develop to check2..."
+        
+        if git diff --quiet check2 origin/develop; then
+          echo "merge_success=true" >> $GITHUB_OUTPUT
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "merge_message=ℹ️ No changes detected between develop and check2" >> $GITHUB_OUTPUT
+          echo "No changes to merge."
+        else
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          if git merge origin/develop --no-ff -m "Auto merge: develop -> check2 ($(date '+%Y-%m-%d %H:%M:%S'))"; then
             echo "merge_success=true" >> $GITHUB_OUTPUT
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "merge_message=ℹ️ No changes detected between develop and check2" >> $GITHUB_OUTPUT
+            echo "merge_message=✅ Successfully merged develop into check2" >> $GITHUB_OUTPUT
+            
+            # Push changes
+            git push origin check2
+            echo "Changes pushed to check2 branch"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            if git merge origin/develop --no-ff -m "Auto merge: develop -> check2 ($(date '+%Y-%m-%d %H:%M:%S'))"; then
-              echo "merge_success=true" >> $GITHUB_OUTPUT
-              echo "merge_message=✅ Successfully merged develop into check2" >> $GITHUB_OUTPUT
-              git push origin check2
-            else
-              echo "merge_success=false" >> $GITHUB_OUTPUT
-              echo "merge_message=❌ Merge conflict detected when merging develop into check2" >> $GITHUB_OUTPUT
-              git merge --abort
-            fi
+            echo "merge_success=false" >> $GITHUB_OUTPUT
+            echo "merge_message=❌ Merge conflict detected when merging develop into check2" >> $GITHUB_OUTPUT
+            
+            git merge --abort
           fi
-
-      - name: Get commit info
-        id: commit_info
-        if: steps.merge.outputs.merge_success == 'true'
-        run: |
+        fi
+    
+    - name: Get commit info
+      id: commit_info
+      run: |
+        if [ "${{ steps.merge.outputs.merge_success }}" == "true" ]; then
           LATEST_COMMIT=$(git log -1 --pretty=format:"%h - %s (%an)")
           echo "latest_commit=$LATEST_COMMIT" >> $GITHUB_OUTPUT
-
+          
           if [ "${{ steps.merge.outputs.has_changes }}" == "true" ]; then
-            NEW_COMMITS=$(git log check2~1..check2 --oneline | head -10 | sed 's/"/\\"/g')
+            NEW_COMMITS=$(git log check2~1..check2 --oneline | head -10)
             echo "new_commits<<EOF" >> $GITHUB_OUTPUT
             echo "$NEW_COMMITS" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "new_commits=No new commits to merge" >> $GITHUB_OUTPUT
           fi
-
-      - name: Send Slack notification on success
-        if: steps.merge.outputs.merge_success == 'true'
-        uses: 8398a7/action-slack@v3
-        with:
-          status: custom
-          custom_payload: |
-            {
-              "text": "${{ steps.merge.outputs.has_changes == 'true' && '🚀 Auto Merge Success' || 'ℹ️ Auto Merge Check - No Changes' }}",
-              "attachments": [
-                {
-                  "color": "${{ steps.merge.outputs.has_changes == 'true' && 'good' || '#36a64f' }}",
-                  "fields": [
-                    {
-                      "title": "Repository",
-                      "value": "${{ github.repository }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Branch",
-                      "value": "develop → check2",
-                      "short": true
-                    },
-                    {
-                      "title": "Status",
-                      "value": "${{ steps.merge.outputs.merge_message }}",
-                      "short": false
-                    },
-                    {
-                      "title": "Latest Commit",
-                      "value": "${{ steps.commit_info.outputs.latest_commit }}",
-                      "short": false
-                    },
-                    {
-                      "title": "Time",
-                      "value": "${{ github.event.head_commit.timestamp || github.run_started_at }}",
-                      "short": true
-                    },
-                    {
-                      "title": "New Commits",
-                      "value": "```\n${{ steps.commit_info.outputs.new_commits }}\n```",
-                      "short": false
-                    }
-                  ]
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      - name: Send Slack notification on failure
-        if: steps.merge.outputs.merge_success == 'false'
-        uses: 8398a7/action-slack@v3
-        with:
-          status: custom
-          custom_payload: |
-            {
-              "text": "⚠️ Auto Merge Failed",
-              "attachments": [
-                {
-                  "color": "danger",
-                  "fields": [
-                    {
-                      "title": "Repository",
-                      "value": "${{ github.repository }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Branch",
-                      "value": "develop → check2",
-                      "short": true
-                    },
-                    {
-                      "title": "Error",
-                      "value": "${{ steps.merge.outputs.merge_message }}",
-                      "short": false
-                    },
-                    {
-                      "title": "Time",
-                      "value": "${{ github.event.head_commit.timestamp || github.run_started_at }}",
-                      "short": true
-                    },
-                    {
-                      "title": "Action Required",
-                      "value": "🛠️ Manual intervention needed to resolve merge conflicts",
-                      "short": false
-                    }
-                  ]
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        fi
+    
+    - name: Get current time
+      id: current_time
+      run: |
+        echo "time=$(TZ='Asia/Ho_Chi_Minh' date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+    
+    - name: Send Slack notification on success with changes
+      if: steps.merge.outputs.merge_success == 'true' && steps.merge.outputs.has_changes == 'true'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "text": "@channel 🚀 Auto Merge Success",
+            "attachments": [
+              {
+                "color": "good",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "develop → check2",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "${{ steps.merge.outputs.merge_message }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Latest Commit",
+                    "value": "${{ steps.commit_info.outputs.latest_commit }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Time",
+                    "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
+                    "short": true
+                  },
+                  {
+                    "title": "New Commits",
+                    "value": "```${{ steps.commit_info.outputs.new_commits }}```",
+                    "short": false
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Send Slack notification on success without changes
+      if: steps.merge.outputs.merge_success == 'true' && steps.merge.outputs.has_changes == 'false'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "text": "@channel ℹ️ Auto Merge Check - No Changes",
+            "attachments": [
+              {
+                "color": "#36a64f",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "develop → check2",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "${{ steps.merge.outputs.merge_message }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Latest Commit",
+                    "value": "${{ steps.commit_info.outputs.latest_commit }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Time",
+                    "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
+                    "short": true
+                  },
+                  {
+                    "title": "Changes",
+                    "value": "No new commits to merge from develop to check2",
+                    "short": false
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Send Slack notification on failure
+      if: steps.merge.outputs.merge_success == 'false'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "text": "@channel ⚠️ Auto Merge Failed",
+            "attachments": [
+              {
+                "color": "danger",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch",
+                    "value": "develop → check2",
+                    "short": true
+                  },
+                  {
+                    "title": "Error",
+                    "value": "${{ steps.merge.outputs.merge_message }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Time",
+                    "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
+                    "short": true
+                  },
+                  {
+                    "title": "Action Required",
+                    "value": "Manual intervention needed to resolve merge conflicts",
+                    "short": false
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
