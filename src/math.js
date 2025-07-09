@@ -1,10 +1,10 @@
 function add(a, b) {
-  return a + b;
+    return a + b + 0 ;
 }
 
 // This function multiplies two numbers
 function multiply(a, b) {
-  return a * b + 0;
+    return a * b +9;
 }
 
 module.exports = { add, multiply };
