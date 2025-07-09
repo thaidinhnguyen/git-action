@@ -32,24 +32,31 @@ jobs:
         git checkout check2
         git pull origin check2
     
-    - name: Merge develop into check2
+    - name: Check for changes and merge
       id: merge
       run: |
         echo "Starting merge from develop to check2..."
         
-        if git merge origin/develop --no-ff -m "Auto merge: develop -> check2 ($(date '+%Y-%m-%d %H:%M:%S'))"; then
+        if git diff --quiet check2 origin/develop; then
           echo "merge_success=true" >> $GITHUB_OUTPUT
-          echo "merge_message=✅ Successfully merged develop into check2" >> $GITHUB_OUTPUT
-          
-          # Push changes
-          git push origin check2
-          echo "Changes pushed to check2 branch"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "merge_message=ℹ️ No changes detected between develop and check2" >> $GITHUB_OUTPUT
+          echo "No changes to merge."
         else
-          echo "merge_success=false" >> $GITHUB_OUTPUT
-          echo "merge_message=❌ Merge conflict detected when merging develop into check2" >> $GITHUB_OUTPUT
-          
-          # Abort merge nếu có conflict
-          git merge --abort
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          if git merge origin/develop --no-ff -m "Auto merge: develop -> check2 ($(date '+%Y-%m-%d %H:%M:%S'))"; then
+            echo "merge_success=true" >> $GITHUB_OUTPUT
+            echo "merge_message=✅ Successfully merged develop into check2" >> $GITHUB_OUTPUT
+            
+            # Push changes
+            git push origin check2
+            echo "Changes pushed to check2 branch"
+          else
+            echo "merge_success=false" >> $GITHUB_OUTPUT
+            echo "merge_message=❌ Merge conflict detected when merging develop into check2" >> $GITHUB_OUTPUT
+            
+            git merge --abort
+          fi
         fi
     
     - name: Get commit info
@@ -59,10 +66,14 @@ jobs:
           LATEST_COMMIT=$(git log -1 --pretty=format:"%h - %s (%an)")
           echo "latest_commit=$LATEST_COMMIT" >> $GITHUB_OUTPUT
           
-          NEW_COMMITS=$(git log check2..origin/develop --oneline | head -10)
-          echo "new_commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$NEW_COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          if [ "${{ steps.merge.outputs.has_changes }}" == "true" ]; then
+            NEW_COMMITS=$(git log check2~1..check2 --oneline | head -10)
+            echo "new_commits<<EOF" >> $GITHUB_OUTPUT
+            echo "$NEW_COMMITS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "new_commits=No new commits to merge" >> $GITHUB_OUTPUT
+          fi
         fi
     
     - name: Send Slack notification on success
@@ -72,10 +83,10 @@ jobs:
         status: custom
         custom_payload: |
           {
-            "text": "🚀 Auto Merge Success",
+            "text": "${{ steps.merge.outputs.has_changes == 'true' && '🚀 Auto Merge Success' || 'ℹ️ Auto Merge Check - No Changes' }}",
             "attachments": [
               {
-                "color": "good",
+                "color": "${{ steps.merge.outputs.has_changes == 'true' && 'good' || '#36a64f' }}",
                 "fields": [
                   {
                     "title": "Repository",
@@ -88,6 +99,11 @@ jobs:
                     "short": true
                   },
                   {
+                    "title": "Status",
+                    "value": "${{ steps.merge.outputs.merge_message }}",
+                    "short": false
+                  },
+                  {
                     "title": "Latest Commit",
                     "value": "${{ steps.commit_info.outputs.latest_commit }}",
                     "short": false
@@ -98,8 +114,8 @@ jobs:
                     "short": true
                   },
                   {
-                    "title": "New Commits",
-                    "value": "```${{ steps.commit_info.outputs.new_commits }}```",
+                    "title": "${{ steps.merge.outputs.has_changes == 'true' && 'New Commits' || 'Changes' }}",
+                    "value": "${{ steps.merge.outputs.has_changes == 'true' && format('```{0}```', steps.commit_info.outputs.new_commits) || 'No new commits to merge from develop to check2' }}",
                     "short": false
                   }
                 ]
