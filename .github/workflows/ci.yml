@@ -91,7 +91,7 @@ jobs:
             "text": "<!channel> 🚀 Auto Merge Success",
             "attachments": [
               {
-                "color": "good",
+                "color": "#36a64f",
                 "fields": [
                   {
                     "title": "Repository",
@@ -189,7 +189,7 @@ jobs:
             "text": "<!channel> ⚠️ Auto Merge Failed",
             "attachments": [
               {
-                "color": "danger",
+                "color": "#dc3545",
                 "fields": [
                   {
                     "title": "Repository",
