@@ -2,9 +2,8 @@ name: Auto Merge Develop to Check2
 
 on:
   schedule:
-    # Chạy lúc 17:00 giờ Việt Nam (UTC+7) = 10:00 UTC
     - cron: '0 10 * * 4'
-  workflow_dispatch: # Cho phép chạy thủ công
+  workflow_dispatch:
 
 jobs:
   auto-merge:
@@ -103,7 +102,7 @@ jobs:
             "text": "<!channel> 🚀 Auto Merge Success",
             "attachments": [
               {
-                "color": "good",
+                "color": "#36a64f",
                 "fields": [
                   {
                     "title": "Repository",
@@ -181,7 +180,7 @@ jobs:
             "text": "<!channel> ⚠️ Auto Merge Failed",
             "attachments": [
               {
-                "color": "danger",
+                "color": "#dc3545",
                 "fields": [
                   {
                     "title": "Repository",
@@ -214,127 +213,3 @@ jobs:
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  # deploy-to-server:
-  #   needs: [auto-merge, notify-merge-result]
-  #   runs-on: ubuntu-latest
-  #   if: needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'true'
-    
-  #   steps:
-  #   - name: Deploy to server
-  #     uses: appleboy/ssh-action@v1.0.3
-  #     with:
-  #       host: ${{ secrets.SERVER_HOST }}
-  #       username: ${{ secrets.SERVER_USERNAME }}
-  #       key: ${{ secrets.SERVER_SSH_KEY }}
-  #       port: ${{ secrets.SERVER_PORT }}
-  #       script: |
-  #         cd ${{ secrets.SERVER_PROJECT_PATH }}
-  #         git fetch origin
-  #         git checkout check2
-  #         git pull origin check2
-  #         echo "Deployment completed at $(date)"
-
-  # notify-deployment-result:
-  #   needs: [auto-merge, deploy-to-server]
-  #   runs-on: ubuntu-latest
-  #   if: always() && needs.auto-merge.outputs.merge_success == 'true' && needs.auto-merge.outputs.has_changes == 'true'
-    
-  #   steps:
-  #   - name: Get current time
-  #     id: current_time
-  #     run: |
-  #       echo "time=$(TZ='Asia/Ho_Chi_Minh' date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
-    
-  #   - name: Send deployment success notification
-  #     if: needs.deploy-to-server.result == 'success'
-  #     uses: 8398a7/action-slack@v3
-  #     with:
-  #       status: custom
-  #       custom_payload: |
-  #         {
-  #           "text": "<!channel> 🚀 Deployment Success",
-  #           "attachments": [
-  #             {
-  #               "color": "good",
-  #               "fields": [
-  #                 {
-  #                   "title": "Repository",
-  #                   "value": "${{ github.repository }}",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Branch",
-  #                   "value": "check2",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Status",
-  #                   "value": "✅ Successfully deployed check2 branch to server",
-  #                   "short": false
-  #                 },
-  #                 {
-  #                   "title": "Server",
-  #                   "value": "${{ secrets.SERVER_HOST }}",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Time",
-  #                   "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
-  #                   "short": true
-  #                 }
-  #               ]
-  #             }
-  #           ]
-  #         }
-  #     env:
-  #       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    
-  #   - name: Send deployment failure notification
-  #     if: needs.deploy-to-server.result == 'failure'
-  #     uses: 8398a7/action-slack@v3
-  #     with:
-  #       status: custom
-  #       custom_payload: |
-  #         {
-  #           "text": "<!channel> ⚠️ Deployment Failed",
-  #           "attachments": [
-  #             {
-  #               "color": "danger",
-  #               "fields": [
-  #                 {
-  #                   "title": "Repository",
-  #                   "value": "${{ github.repository }}",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Branch",
-  #                   "value": "check2",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Status",
-  #                   "value": "❌ Failed to deploy check2 branch to server",
-  #                   "short": false
-  #                 },
-  #                 {
-  #                   "title": "Server",
-  #                   "value": "${{ secrets.SERVER_HOST }}",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Time",
-  #                   "value": "${{ steps.current_time.outputs.time }} (Vietnam Time)",
-  #                   "short": true
-  #                 },
-  #                 {
-  #                   "title": "Action Required",
-  #                   "value": "Check server connection and deployment logs",
-  #                   "short": false
-  #                 }
-  #               ]
-  #             }
-  #           ]
-  #         }
-  #     env:
-  #       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
